@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 const { Int32 } = require('bson');
 mongoose.set('useFindAndModify', false);
 
@@ -7,19 +8,23 @@ const BSProfileSchema = mongoose.Schema({
         type: Boolean,
         default:0 //0 is not active, 1 is active
     },
-    batteries:[String],
+    batteries:[
+        {
+            type: Schema.Types.ObjectId,
+            ref: 'battery'
+        }
+    ],
     email:{
         type: String,
         require: true
     },
-    docs:[{
-        // type: Int32,
-        type: Number,
-        file:{
+    docs:[
+        {
             data: Buffer, 
-            contentType: String 
+            contentType: String,
+            docType: String
         }
-    }],
+    ],
     MotorCode:{
         type: String
     },

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose')
 const stationSchema = new mongoose.Schema({
+    stationID: String,
     location: {
         coordinates: {
           type: [Number]
@@ -7,7 +8,8 @@ const stationSchema = new mongoose.Schema({
         name: String
       },
     batteries:[{
-        type:mongoose.Schema.Types.ObjectId
+        type:mongoose.Schema.Types.ObjectId,
+        ref: 'battery'
     }],
     date:{
         type:Date,
