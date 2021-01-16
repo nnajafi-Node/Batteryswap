@@ -20,11 +20,12 @@ app.use(body_parser.json());
 const profileApi = require('./routesBS/apiBS/profile');
 const registerApi = require('./routesBS/apiBS/register');
 const batteryApi = require('./routesBS/apiBS/battery');
+const stationApi = require('./routesBS/apiBS/station');
 
 app.use('/profile',profileApi);
 app.use('/register',registerApi);
 app.use('/battery',batteryApi);
-
+app.use('/station', stationApi);
 
 
 // DB Config
