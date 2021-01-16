@@ -13,9 +13,10 @@ const validateProfileInput = require("../../validation/profile");
 const Profile = require("../../modelsBS/userBS");
 const Battery = require("../../modelsBS/batteryBS");
 const Station = require("../../modelsBS/stationModelBS");
+const logModel = require('../../modelsBS/logBS');
 
 const passportLogin = require('passport')
-        , LocalStrategy =require('passport-local').Strategy;
+        , LocalStrategy =require('passport-local' ).Strategy;
 
 const jwt = require("jsonwebtoken");
 
@@ -25,9 +26,9 @@ const { profile } = require("console");
 const { resolve } = require("path");
 
 passportLogin.use(new LocalStrategy(
-  function(username, password, MotorCode, arrayOfBatteries, done){
+  function(phone, password, MotorCode, arrayOfBatteries, done){
 
-      if(arrayOfBatteries.length <= 0 || MotorCode.length <= 0 || username.length <= 0 || password.length <= 0){
+      if(arrayOfBatteries.length <= 0 || MotorCode.length <= 0 || phone.length <= 0 || password.length <= 0){
           console.log('Login to application parameters error.');
           return done(null, false, {message: 'خطا در پارامترهای وروردی.'});
       }
@@ -35,7 +36,7 @@ passportLogin.use(new LocalStrategy(
       try{
           Profile.find(
               {
-                  username: username,
+                  phone: phone,
                   password: password,
                   MotorCode: MotorCode,
                   batteries: {'$in' : arrayOfBatteries},
@@ -95,7 +96,7 @@ router.post("/register",passport.authenticate("jwt", {session: false}),(req, res
 
     const profileFields = {};
     if (req.body.name) profileFields.name = req.body.name;
-    if (req.body.username) profileFields.username = req.body.username;
+   // if (req.body.username) profileFields.username = req.body.username;
     if (req.body.nationalcode) profileFields.nationalcode = req.body.nationalcode;
     if (req.body.phone) profileFields.phone = req.body.phone;
     if (req.body.email) profileFields.email = req.body.email;
@@ -103,47 +104,132 @@ router.post("/register",passport.authenticate("jwt", {session: false}),(req, res
     if (req.body.MotorCode) profileFields.MotorCode = req.body.MotorCode;
     
     Profile.findOne({
-      username: req.body.username
+        phone: req.body.phone
     }).then(profile => {
       if (profile) {
         Profile.findOneAndUpdate({
-            username: req.body.username
+            phone: req.body.phone
         }, {
           $set: profileFields
         }, {
           new: true
         })
-        .then(profile => res.json(profile))
-        .catch(err => res.json(err));
+        .then(profile => {
+
+            let log = new logModel({
+                typeID: 1,//User
+                type: 1, //insert
+                after: profile._id,
+                changeDate: Date.now(),
+                userID: profile._id
+            });
+    
+            log.save()
+            .then(() => {
+                return res.status(200).json(profile);
+            });
+            
+        })
+        .catch(err => res.status(400).send(err));
       }
     });
 });
 
-router.post("/Edit", passport.authenticate("jwt", {session: false}), (req, res) => {
+router.post("/Edit", passport.authenticate("jwt", {session: false}), async (req, res) => {
   const profileFields = {};
-    if (req.body.name) profileFields.name = req.body.name;
-    if (req.body.username) profileFields.username = req.body.username;
-    if (req.body.nationalcode) profileFields.nationalcode = req.body.nationalcode;
-    if (req.body.phone) profileFields.phone = req.body.phone;
-    if (req.body.email) profileFields.email = req.body.email;
-    if (req.body.batteries) profileFields.batteries = req.body.batteries;
-    if (req.body.MotorCode) profileFields.MotorCode = req.body.MotorCode;
+  let log_arr = [];
 
-  Profile.findOne({
-    username: req.body.username
-  }).then(profile => {
-    if (profile) {
-      Profile.findOneAndUpdate({
-        username: req.body.username
+  const prof = await Profile.findOne({
+    phone: req.body.phone
+  });
+
+  if(prof){
+
+    if (req.body.name) {
+        profileFields.name = req.body.name;
+
+        log_arr.push({  field: "name", 
+                        before: prof.name,
+                        after: profileFields.name
+        });
+    }
+    //if (req.body.username) profileFields.username = req.body.username;
+    if (req.body.nationalcode) {
+        profileFields.nationalcode = req.body.nationalcode;
+
+        log_arr.push({  field: "nationalcode", 
+                        before: prof.nationalcode,
+                        after: profileFields.nationalcode
+        });
+    }
+    if (req.body.phone) {
+        profileFields.phone = req.body.phone;
+
+        log_arr.push({  field: "phone", 
+                        before: prof.phone,
+                        after: profileFields.phone
+        });
+    }
+    if (req.body.email) {
+        profileFields.email = req.body.email;
+
+        log_arr.push({  field: "email", 
+                        before: prof.email,
+                        after: profileFields.email
+        });
+    }
+    if (req.body.batteries) {
+        profileFields.batteries = req.body.batteries;
+
+        log_arr.push({  field: "batteries", 
+                        before: prof.batteries,
+                        after: profileFields.batteries
+        });
+    }
+    if (req.body.MotorCode) {
+        profileFields.MotorCode = req.body.MotorCode;
+
+        log_arr.push({  field: "MotorCode", 
+                        before: prof.MotorCode,
+                        after: profileFields.MotorCode
+        });
+    }
+  
+    Profile.findOneAndUpdate({
+        phone: req.body.phone
       }, {
         $set: profileFields
       }, {
         new: true
       })
-      .then(profile => res.json(profile))
+      .then(async (profile) => {
+
+        let logs = [];
+        const date = Date.now();
+
+        await Promise.all( log_arr.map( lg => {
+
+            let log = new logModel({
+                typeID: 1,//User
+                type:2, //Edit
+                field: lg.field,
+                before: lg.before,
+                after: lg.after,
+                changeDate: date,
+                userID: profile._id
+            });
+
+            logs.push(log);
+        }));
+            
+        logs.save()
+        .then(() => {
+            return res.status(200).json(profile);
+        });
+
+      })
       .catch(err => res.json(err));
     }
-  });
 });
 
 /**
@@ -162,11 +248,12 @@ var upload = multer({
   }
 });
 
-/**
- * upload.single('fieldname') middleware:
- *      accept a single file with the name fieldname. The single file will be stored in req.file.
- */
-router.post('/img/upload', upload.array('myImage', 10) , (req, res) => {
+router.get('/docHTML', function (req, res) {
+    res.sendFile(__dirname + '/cms.html');
+
+});
+
+router.post('/doc/upload', upload.array('myImage', 10) , async (req, res) => {
   let files_to_save = [];
   req.files.map(file => {
       if (file.size > 5000000)
@@ -186,7 +273,8 @@ router.post('/img/upload', upload.array('myImage', 10) , (req, res) => {
       
       const file_ = {
         data: new Buffer.from(encode_image, 'base64'),
-        contentType: file.mimetype
+        contentType: file.mimetype,
+        docType:1
       }
 
       files_to_save.push(file_);
@@ -198,31 +286,129 @@ router.post('/img/upload', upload.array('myImage', 10) , (req, res) => {
       });
   });
 
-  /*const newFile = new fileUploadModel({
-      files: files_to_save
+  let valueArray = await Promise.all(
+    files_to_save.map(function(val){ return val.docType; })
+  );
+
+  const hasDuplicate = valueArray.some(function(item, index){
+      return valueArray.indexOf(item) !== index;
+  });
+
+  if(hasDuplicate){
+      res.status(400).json('یکی از مدارک تکراری می‌باشد.');
+  }
+
+  await Promise.all(files_to_save.map(async (file, index) => {
+
+      const newFile = await Profile.findOneAndUpdate(
+          {
+            phone: req.body.phone,
+            docs: { $elemMatch: {docType: file.docType}}
+          },
+          {
+              data: file.data,
+              contentType: file.contentType
+          }
+      );
+
+          checking = () => new Promise(async (resolve, reject) => {
+            if(newFile){
+                files_to_save.splice(index); 
+                return resolve(true);
+            }
+            else
+                return resolve(false);
+          });
+
+          await checking();
+
+  }));
+
+  if(files_to_save.length > 0){
+
+  Profile.findOneAndUpdate(
+      {
+        phone: req.body.phone
+      },
+      {
+        $push: {docs: files_to_save}
+      }
+  )
+  .then((user) => {
+
+    //insert log
+    let log = new logModel({
+        typeID: 1,
+        type:1, //insert
+        field: "docs",
+        changeDate: Date.now(),
+        userID: user._id
+    });
+
+    log.save()
+    .then(() => {
+        return res.status(200).send(user);
+    });
+
+  })
+  .catch(err =>{
+      console.log(err);
+      res.status(400).json('failed');
   });
   
-  newFile.save().then(saved_news => {
-      res.redirect('../content/'+saved_news._id);
-  });*/
+  }else{
+    res.status(200).json('success');
+  }
+  
+});
 
-  Profile.findOne({
-    username: req.body.username
-  }).then(profile => {
-    if (profile) {
-      Profile.findOneAndUpdate({
-        username: req.body.username
-      }, {
-        $set: {
-          docs: files_to_save
-        }
-      }, {
-        new: true
-      })
-      .then(profile => res.json(profile))
-      .catch(err => res.json(err));
+router.post('/removeDocs', async (req, res) => {
+
+    if(!req.body.docs || (req.body.docs && req.body.docs.length <= 0)){
+
+        return res.status(400).json('خطا در شناسایی فیلد مدارک.');
+
+    }else if(!req.body.userID || (req.body.userID && parseInt(req.body.userID) <= 0)){
+
+        return res.status(400).json('خطا در شناسایی فیلد شناسه کاربر.');
+
+    }else{
+
+        Profile
+        .findOneAndUpdate(
+            {
+                _id: req.body.userID
+            },
+            {
+                $pull: {docs: {_id: {$in: req.body.docs}}}
+            }
+        )
+        .then((user) => {
+            if(user){
+
+                //insert log
+                let log = new logModel({
+                    typeID: 1,
+                    type:3, //delete
+                    field: "docs",
+                    changeDate: Date.now(),
+                    userID: req.body.userID
+                });
+
+                log.save()
+                .then(() => {
+                    return res.status(200).send(user);
+                });
+
+            }else{
+                return res.status(400).json('کاربر یافت نشد.');
+            }
+        })
+        .catch(err => {
+            return res.status(400).send(err);
+        });
+
     }
-  });
 });
 
 router.post('/loginToApp', passport.authenticate('local'), (req, res) => {
@@ -245,12 +431,24 @@ router.post('/loginToApp', passport.authenticate('local'), (req, res) => {
             console.log(err);
         }
 
-        res.json({
-            success: true,
-            token: "Bearer " + token,
-            //refreshToken: refreshToken,
-            phone: req.user.phone
+        //insert log
+        let log = new logModel({
+            typeID: 4,
+            type:4, //login
+            changeDate: Date.now(),
+            userID: req.user._id
         });
+
+        log.save()
+        .then(() => {
+            return res.status(200).json({
+                success: true,
+                token: "Bearer " + token,
+                //refreshToken: refreshToken,
+                phone: req.user.phone
+            });
+        });
+
     }
   );
 });
@@ -293,7 +491,22 @@ router.post('/changeConfirmUser', (req, res) => {
             )
             .then((doc) => {
                 console.log(doc);
-                res.status(200).send(JSON.stringify('وضعیت تائید کاربر با موفقیت ثبت شد.'));
+
+                let log = new logModel({
+                    typeID: 1,//User
+                    type:2, //update
+                    field: 'confirmed',
+                    before: !ConfirmStatus,
+                    after: ConfirmStatus,
+                    changeDate: Date.now(),
+                    userID: UserId
+                });
+        
+                log.save()
+                .then(() => {
+                    return res.status(200).send(JSON.stringify('وضعیت تائید کاربر با موفقیت ثبت شد.'));
+                });
+                
             })
             .catch(err => {
                 console.log("changeConfirmUser update error: " + err);
@@ -371,7 +584,7 @@ router.post('/activationChangeUser', async (req, res) => {
                                     }
                                 }else{
                                     
-                                    console.lof(err);
+                                    console.log(err);
                                     error = 'خطا در فعالسازی کاربر.';
                                     return;// reject('خطا در فعالسازی کاربر.');
         
@@ -410,7 +623,22 @@ router.post('/activationChangeUser', async (req, res) => {
                     )
                     .then((doc) => {
                         console.log(doc);
-                        return res.status(200).send(JSON.stringify('وضعیت فعال/غیرفعال بودن کاربر باموفقیت بروزرسانی شد.'));
+
+                        let log = new logModel({
+                            typeID: 1,//User
+                            type:2, //update
+                            field: 'active',
+                            before: !ActivationStatus,
+                            after: ActivationStatus,
+                            changeDate: Date.now(),
+                            userID: UserId
+                        });
+                
+                        log.save()
+                        .then(() => {
+                            return res.status(200).send(JSON.stringify('وضعیت فعال/غیرفعال بودن کاربر باموفقیت بروزرسانی شد.'));
+                        });
+
                     })
                     .catch(err => {
                         console.log("changeConfirmUser update error: " + err);
@@ -434,175 +662,220 @@ router.post('/updateBatteryOwnerShip', passport.authenticate("jwt", {session: fa
 
     if(isEmpty(req.batteries)){
         return res.status(400).json('فیلد باتری خالی است.');
-    }
-
-    const decoded = await jwt.verify(
-        req.token.split(' ')[1],
-        keys.secretOrKey,
-    );
-
-    Profile.findOne(
-        {
-            phone: decoded.phone
-        }
-    )
-    .then(user => {
-
-        if(user){
-
-            if(!user.confirmed || !user.active){
-                return res.status(400).json('کاربر غیرفعال است.')
+    }else{
+        const decoded = await jwt.verify(
+            req.token.split(' ')[1],
+            keys.secretOrKey,
+        );
+    
+        Profile.findOne(
+            {
+                phone: decoded.phone
             }
+        )
+        .then(async(user) => {
+    
+            if(user){
+    
+                if(!user.confirmed || !user.active){
+                    return res.status(400).json('کاربر غیرفعال است.')
+                }
+                
+                if(user.batteries.length > 0){
+    
+                    return res.status(400).json( {
+                        valid: false,
+                        userID: user._id,
+                        error: 'پیش از این به کاربر باتری اختصاص داده‌ شده‌است.'
+                    });
+    
+                }else{
+    
+                    await Promise.all(
+                        //check if new batteries are active
+                        req.batteries.map(async(btrCode) => {
+    
+                            const btr = await Battery.findOne(
+                                {
+                                    code: btrCode
+                                }
+                            )
+                            .exec();
+    
+                            checking = () => new Promise(async (resolve, reject) => {
             
-            user.batteries.map(batteryCode => {
-
-                Battery.findOne(
-                    {
-                        code: batteryCode,
-                        userID: user._id
-                    }
-                )
-                .then(battery => {
-                    if(battery && battery.status === 0){
-
-                        console.log('One of the betteries is not active');
-
-                        Profile.findOneAndUpdate(
-                            {
-                                _id: user._id
-                            },
-                            {
-                                confirmed: false
-                            }
-                        )
-                        .then(() => {
-
-                            return res.status(400).json({
-                                valid: false,
-                                userID: 0,
-                                error: 'باتری با کد ' +  battery.code + 'دچار مشکل است و بنابراین کاربر غیرفعال شد.'
+                                if(btr){
+                                    if(btr.status === 0){
+    
+                                        return resolve(false);
+    
+                                    }else{
+                                        if(btr.userID > 0){
+                                            return resolve(false);
+                                        }else{
+                                            if(!btr.stationID || btr.stationID <= 0){
+                                                return resolve(false);
+                                            }else{
+                                                const reserve = await Reserve.find(
+                                                    {
+                                                        batteries: { '$in': btr._id}
+                                                    }
+                                                )
+                                                .exec();
+        
+                                                if(reserve){
+                                                    return resolve(false);
+                                                }else{
+                                                    return resolve(true);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }else{
+                                    return resolve(false);
+                                }
+                                
                             });
-
+    
+                            checking()
+                            .then(resolve => {
+                                if(!resolve){
+    
+                                    return res.status(400).json( {
+                                        valid: false,
+                                        userID: 0,
+                                        error: 'یکی از باتری‌ها قابل استفاده نمی‌باشد.'
+                                    });
+                                }
+                            })
+                            .catch(err => {
+    
+                                console.log(err);
+                                return res.status(400).json({
+                                    valid: false,
+                                    userID: 0,
+                                    error: 'خطا در اختصاص باتری به کاربر.'
+                                });
+                            });
                         })
-                        .catch(err => {
-                            console.log('User confirmed db update error.', err);
-                            return res.status(400).json({
-                                valid: false,
-                                userID: 0,
-                                error: 'خطا در بروزرسانی اطلاعات.'
-                            });
+                    );
+                    
+                    Profile.findOneAndUpdate(
+                        {
+                            _id: this.use._id
+                        },
+                        {
+                            batteries: req.batteries
+                        }
+                    )
+                    .then(async () => {
+
+                        let str = '';
+                        await Promise.all( req.batteries.map(bat => {
+                            str += bat;
+                            str += ', ';
+                        }));
+
+                        let log = new logModel({
+                            typeID: 1,//User
+                            type:2, //update
+                            field: 'batteries',
+                            after: str,
+                            changeDate: Date.now(),
+                            userID: this.use._id
+                        });
+                
+                        log.save()
+                        .then(() => {
+                            return res.status(200).send(JSON.stringify('باتری‌ها با موفقیت به کاربر اختصاص داده شدند.'));
                         });
 
-                    }
-                })
-                .catch(err => {
-                    console.log('userValidationByQRCode battery validation db failed.', err);
-                    return res.status(400).json({
-                        valid: false,
-                        userID: 0,
-                        error: 'خطا در احراز هویت کاربر.'
-                    });
-                });
-            });
-
-
-            //check if new batteries are active
-            req.batteries.map(btrCode => {
-
-                Battery.findOne(
-                    {
-                        code: btrCode
-                    }
-                )
-                .then(btr => {
-
-                    if(btr.status === 0){
+                    })
+                    .catch(err => {
+                        console.log(err);
                         return res.status(400).json( {
                             valid: false,
                             userID: 0,
-                            error: 'باتری با کد' + btr.code + 'قابل استفاده نمی‌باشد.'
+                            error: 'خطا در بروزرسانی اطلاعات.'
                         });
-                    }
-
-                })
-                .catch(err => {
-
-                    console.log(err);
-                    return res.status(400).json({
-                        valid: false,
-                        userID: 0,
-                        error: 'خطا در احراز هویت کاربر.'
                     });
-                });
-
-            });
-
-            Profile.findOneAndUpdate(
-                {
-                    _id: this.use._id
-                },
-                {
-                    batteries: req.batteries
                 }
-            )
-            .then()
-            .catch(err => {
-                console.log(err);
-                return res.status(400).json( {
-                    valid: false,
-                    userID: 0,
-                    error: 'خطا در بروزرسانی اطلاعات.'
-                });
-            })
-        }
-        
-    })
-    .catch(err => {
-
-        console.log('update battery ownership db error.', err);
-        return res.status(400).json( {
-            valid: false,
-            userID: 0,
-            error: 'خطا در بروزرسانی اطلاعات.'
+            }
+            
+        })
+        .catch(err => {
+    
+            console.log('update battery ownership db error.', err);
+            return res.status(400).json( {
+                valid: false,
+                userID: 0,
+                error: 'خطا در بروزرسانی اطلاعات.'
+            });
+    
         });
-
-    });
+    }
 });
 
-provideRFIDCard = function(userId, RFIDCode){
-  try{
+router.post('/provideRFIDCard', async (req, res) => {
+    const userId = req.body.userId;
+    const RFIDCode = req.body.RFIDCode;
 
-      const {
-          errors,
-          isValidUser
-      } = userValidation({userId, RFIDCode});
+    try{
 
-      if(!isEmpty(errors.userId) || !isEmpty(errors.RFIDCode)){
-          res.status(400).send(JSON.stringify(errors.userId, errors.RFIDCode));
-          return false;
-      }
+        const {
+            errors,
+            isValidUser
+        } = userValidation({userId, RFIDCode});
+  
+        if(!isEmpty(errors.userId) || !isEmpty(errors.RFIDCode)){
+            return res.status(400).send(JSON.stringify(errors.userId, errors.RFIDCode));
+        }
+  
+        let prv_RFIDCode  =  await Profile.findOne(
+            {
+                _id: userId
+            }
+        )
+        .select({'RFIDCode': 1, '_id': 0})
+        .exec();
 
-      Profile.updateOne(
-          {
-              _id: userId
-          },
-          {
-              RFIDCode: RFIDCode
-          }
-      )
-      .then((doc) => {
-          console.log(doc);
-          return true;
-      })
-      .catch(err => {
-          console.log("provideRFIDCard update error: " + err);
-          return false;
-      })
-  }catch(err){
-      console.log("provideRFIDCard error: " + err);
-      return false;
-  }
-}
+        Profile.updateOne(
+            {
+                _id: userId
+            },
+            {
+                RFIDCode: RFIDCode
+            }
+        )
+        .then(() => {
+
+            let log = new logModel({
+                typeID: 1,//User
+                type:2, //update
+                field: 'RFIDCode',
+                before: prv_RFIDCode,
+                after: RFIDCode,
+                changeDate: Date.now(),
+                userID: this.use._id
+            });
+    
+            log.save()
+            .then(() => {
+                return res.status(200).send(JSON.stringify('باتری‌ها با موفقیت به کاربر اختصاص داده شدند.'));
+            });
+
+            return res.status(200).json('صدور کارت با موفقیت انجام شد.');
+        })
+        .catch(err => {
+            console.log("provideRFIDCard update error: " + err);
+            return res.status(400).json('خطا در صدور کارت.');
+        })
+    }catch(err){
+        console.log("provideRFIDCard error: " + err);
+        return res.status(400).json('خطا در صدور کارت.');
+    }
+});
+
 
 checkUserOwnershiptOfMotor = function(UserId, MotorCode){
   try{
@@ -725,310 +998,12 @@ userValidationInLoginToApp = function(userId, MotorCode, arrayOfBatteries){
   }
 }
 
-userValidationByUsernamePassword = function(username, password){
-
-    Profile
-    .findOne(
-        {
-            username: username, 
-            password: password, 
-            confirmed: true, 
-            active: true
-        }
-    )
-    .then(prof => {
-
-        if(prof){
-
-            prof.batteries.map(batteryCode => {
-
-                Battery.findOne(
-                    {
-                        code: batteryCode,
-                        userID: prof._id
-                    }
-                )
-                .then(battery => {
-                    if(battery && battery.status === 0){
-
-                        console.log('One of the betteries is not active');
-                        Profile.findOneAndUpdate(
-                            {
-                                _id: prof._id
-                            },
-                            {
-                                confirmed: false
-                            }
-                        )
-                        .then(() => {
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'باتری با کد ' +  battery.code + 'دچار مشکل است.'
-                            };
-                        })
-                        .catch(err => {
-                            console.log('User confirmed db update error.', err);
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'خطا در احراز هویت کاربر.'
-                            };
-                        });
-
-                    }
-                })
-                .catch(err => {
-                    console.log('userValidationByRFIDCode battery validation db failed.', err);
-                    return {
-                        valid: false,
-                        userID: 0,
-                        error: 'خطا در احراز هویت کاربر.'
-                    };
-                });
-            });
-
-            return {
-                valid: true,
-                userID: prof._id
-            };
-
-        }else{
-
-            return {
-                valid: false,
-                userID: 0,
-                error: 'کاربری با این مشخصات یافت نشد.'
-            };
-
-        }
-
-    })
-    .catch(err => {
-
-        console.log('userValidationByUsernamePassword db error', err);
-        return {
-            valid: false,
-            userID: 0,
-            error: 'خطا در احراز هویت کاربر.'
-        };
-        
-    });
-}
-
-userValidationByRFIDCode = function(RFIDCode){
-    
-    Profile
-    .findOne(
-        {
-            RFIDCode: RFIDCode, 
-            confirmed: true, 
-            active: true
-        }
-    )
-    .then(prof => {
-
-        if(prof){
-            prof.batteries.map(batteryCode => {
-
-                Battery.findOne(
-                    {
-                        code: batteryCode,
-                        userID: prof._id
-                    }
-                )
-                .then(battery => {
-                    if(battery && battery.status === 0){
-
-                        console.log('One of the betteries is not active');
-
-                        Profile.findOneAndUpdate(
-                            {
-                                _id: prof._id
-                            },
-                            {
-                                confirmed: false
-                            }
-                        )
-                        .then(() => {
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'باتری با کد ' +  battery.code + 'دچار مشکل است.'
-                            };
-                        })
-                        .catch(err => {
-                            console.log('User confirmed db update error.', err);
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'خطا در احراز هویت کاربر.'
-                            };
-                        });
-
-                    }
-                })
-                .catch(err => {
-                    console.log('userValidationByRFIDCode battery validation db failed.', err);
-                    return {
-                        valid: false,
-                        userID: 0,
-                        error: 'خطا در احراز هویت کاربر.'
-                    };
-                });
-            });
-
-            return {
-                valid: true,
-                userID: prof._id
-            };
-
-        }else{
-
-            return {
-                valid: false,
-                userID: 0,
-                error: 'کاربری با این مشخصات یافت نشد.'
-            };
-
-        }
-
-    })
-    .catch(err => {
-        console.log('userValidationByUsernamePassword db error', err);
-        return {
-            valid: false,
-            userID: 0,
-            error: 'خطا در احراز هویت کاربر.'
-        };
-    });
-}
-
 checkStationOwnerShipOfBattery = function(stationID, batteries){
     if(!isEmpty(stationID)){
         batteries.map(battery => {
 
         });
     }
-}
-
-userValidationByQRCode = async function(QRCode, userToken){
-
-    let stationID = QRCode;
-    Station.findOne(
-        {
-            _id: stationID,
-            isActive: true
-        }
-    )
-    .then(station => {
-        if(!station){
-            return {
-                valid: false,
-                userID: 0,
-                error: 'ایستگاه فعالی با این مشخصات یافت نشد.'
-            }
-        }
-    })
-    .catch(err => {
-
-        console.log('userValidationByQRCode station foundation db error.', err);
-        return {
-            valid: false,
-            userID: 0,
-            error: 'خطا در احراز هویت کاربر.'
-        }
-
-    });
-
-    const decoded = await jwt.verify(
-        userToken.split(' ')[1],
-        keys.secretOrKey,
-    );
-
-    Profile.findOne(
-        {
-            phone: decoded.phone,
-            confirmed: true, 
-            active: true
-        }
-    )
-    .then(prof => {
-
-        if(prof){
-            prof.batteries.map(batteryCode => {
-
-                Battery.findOne(
-                    {
-                        code: batteryCode,
-                        userID: prof._id
-                    }
-                )
-                .then(battery => {
-                    if(battery && battery.status === 0){
-
-                        console.log('One of the betteries is not active');
-
-                        Profile.findOneAndUpdate(
-                            {
-                                _id: prof._id
-                            },
-                            {
-                                confirmed: false
-                            }
-                        )
-                        .then(() => {
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'باتری با کد ' +  battery.code + 'دچار مشکل است.'
-                            };
-                        })
-                        .catch(err => {
-                            console.log('User confirmed db update error.', err);
-                            return {
-                                valid: false,
-                                userID: 0,
-                                error: 'خطا در احراز هویت کاربر.'
-                            };
-                        });
-
-                    }
-                })
-                .catch(err => {
-                    console.log('userValidationByQRCode battery validation db failed.', err);
-                    return {
-                        valid: false,
-                        userID: 0,
-                        error: 'خطا در احراز هویت کاربر.'
-                    };
-                });
-            });
-
-            return {
-                valid: true,
-                userID: prof._id
-            };
-
-        }else{
-
-            return {
-                valid: false,
-                userID: 0,
-                error: 'کاربری با این مشخصات یافت نشد.'
-            };
-
-        }
-
-    })
-    .catch(err => {
-        console.log('userValidationByQRCode db error', err);
-        return {
-            valid: false,
-            userID: 0,
-            error: 'خطا در احراز هویت کاربر.'
-        };
-    });
 }
 
 module.exports = router;

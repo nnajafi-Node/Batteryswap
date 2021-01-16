@@ -160,7 +160,7 @@ router.post('/verifyCode', async (req, res) => {
 })
 /**
  * @summary Initial user registration.
- * @param phone,username,password
+ * @param phone,password
  * @returns error - an array of error strings
  * @returns status - 400 if error occurs, 200 if successful.
  */
@@ -175,16 +175,15 @@ router.post("/InitialRegister", (req, res) => {
   }
 
   profileModel.findOne({
-    username: req.body.username
+    phone: req.body.phone
   }).then(user => {
     if (user) {
-      errors.username = "نام کاربری وجود دارد";
+      errors.phone = "شماره موبایل وجود دارد";
       return res.status(400).json(errors);
     } 
     else {
       const newUser = new profileModel({
         phone: req.body.phone,
-        username: req.body.username,
         password: req.body.password
       });
 
